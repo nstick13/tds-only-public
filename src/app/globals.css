@@ -1,0 +1,53 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Retro scoreboard base styles. Reusable primitives live in
+   src/components/ui/ — prefer those over new raw CSS in feature code. */
+
+:root {
+  color-scheme: dark;
+}
+
+html,
+body {
+  height: 100%;
+}
+
+body {
+  background-color: #0f5132;
+  color: #fbf8ef;
+  font-family: var(--font-vt323), monospace;
+  font-size: 20px;
+  line-height: 1.4;
+}
+
+/* Pixel art / crisp edges for any sprite-like imagery (team logos, badges). */
+img.pixelated {
+  image-rendering: pixelated;
+  image-rendering: -moz-crisp-edges;
+  image-rendering: crisp-edges;
+}
+
+h1,
+h2,
+h3,
+h4,
+.font-pixel {
+  font-family: var(--font-press-start), monospace;
+}
+
+/* Chunky hard borders + focus states consistent with the NES aesthetic. */
+* {
+  outline-color: #ffdd00;
+}
+
+:focus-visible {
+  outline: 2px solid #ffdd00;
+  outline-offset: 2px;
+}
+
+::selection {
+  background: #ffdd00;
+  color: #0f5132;
+}
