@@ -89,6 +89,7 @@ export default async function CommishPage({ params }: { params: { slug: string }
             slug={league.slug}
             members={members}
             currentUserId={membership.user_id}
+            size={league.size}
           />
           <InviteManager slug={league.slug} invites={invites} />
         </div>
@@ -104,6 +105,7 @@ export default async function CommishPage({ params }: { params: { slug: string }
           stages={stages}
           managers={seated}
           currentStage={currentStage}
+          size={league.size}
         />
       </CommishSection>
 

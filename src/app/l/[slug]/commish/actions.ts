@@ -19,6 +19,7 @@ import { createClient } from "@/lib/supabase/server";
 import { requireLeague } from "@/lib/league/context";
 import {
   getDraftOrder,
+  getMembers,
   getRosterPicks,
   getSeatedMembers,
   getStageById,
@@ -26,7 +27,11 @@ import {
   getStageStats,
 } from "@/lib/db";
 import { generateDraftOrder, type StandingsSeed } from "@/lib/draftOrder";
-import { LEAGUE_SIZE } from "@/lib/league";
+import {
+  MAX_LEAGUE_SIZE,
+  MIN_LEAGUE_SIZE,
+  isValidLeagueSize,
+} from "@/lib/league";
 import { timeUntil } from "@/lib/timeAgo";
 import { computeStandings } from "@/lib/standings";
 import { memberName, type LeagueContext } from "@/lib/types";
@@ -176,8 +181,8 @@ export async function openSeasonAction(slug: string): Promise<ActionResult> {
 
   revalidateLeague(slug);
   const warning =
-    members.length < LEAGUE_SIZE
-      ? ` (${members.length}/${LEAGUE_SIZE} seats filled — it'll play fine, but you'll want the full ${LEAGUE_SIZE} for the real thing)`
+    members.length < ctx.league.size
+      ? ` (${members.length}/${ctx.league.size} seats filled — it'll play fine, but you'll want the full ${ctx.league.size} for the real thing)`
       : "";
   return {
     success: true,
@@ -428,6 +433,68 @@ export async function replaceRosterPickAction(
 }
 
 /**
+ * Changes how many managers a league seats.
+ *
+ * Allowed at any time, not just during setup — the common case is a
+ * commissioner who planned for eight, got six, and would rather run a real
+ * six-manager league than three empty seats and a short draft every week.
+ *
+ * Shrinking below an occupied seat is refused by a database trigger
+ * (enforce_size_fits_seated), not here: the check has to be atomic against
+ * someone accepting an invite at the same moment. This re-checks first only
+ * so the usual case gets a sentence naming who is in the way instead of a
+ * raw constraint error.
+ */
+export async function updateLeagueSizeAction(
+  slug: string,
+  size: number,
+): Promise<ActionResult> {
+  const guard = await requireCommissioner(slug);
+  if ("failure" in guard) return guard.failure;
+  const { ctx } = guard;
+
+  if (!isValidLeagueSize(size)) {
+    return {
+      success: false,
+      message: `A league seats between ${MIN_LEAGUE_SIZE} and ${MAX_LEAGUE_SIZE} managers.`,
+    };
+  }
+
+  if (size === ctx.league.size) {
+    return { success: false, message: `Already ${size} seats.` };
+  }
+
+  const members = await getMembers(ctx.league.id);
+  const highest = members.reduce<number>(
+    (max, m) => (m.seat !== null && m.seat > max ? m.seat : max),
+    0,
+  );
+  if (size < highest) {
+    const blocking = members.find((m) => m.seat === highest);
+    return {
+      success: false,
+      message:
+        `Seat ${highest} is taken by ${blocking ? memberName(blocking) : "a manager"}. ` +
+        `Move or remove them before shrinking to ${size}.`,
+    };
+  }
+
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from("leagues")
+    .update({ size })
+    .eq("id", ctx.league.id);
+  if (error) return { success: false, message: friendlyDbError(error.message) };
+
+  revalidateLeague(slug);
+  return {
+    success: true,
+    message: `League now seats ${size}.`,
+    data: undefined,
+  };
+}
+
+/**
  * Manual roster correction (the deliberate post-lock injury-swap path).
  * Commissioner RLS permits roster_picks writes in any stage status. Remove
  * and/or add a player for one manager in one stage.
@@ -504,9 +571,12 @@ export async function updateMemberAction(
   if (
     update.seat !== undefined &&
     update.seat !== null &&
-    (update.seat < 1 || update.seat > LEAGUE_SIZE)
+    (update.seat < 1 || update.seat > ctx.league.size)
   ) {
-    return { success: false, message: `Seat must be between 1 and ${LEAGUE_SIZE}.` };
+    return {
+      success: false,
+      message: `Seat must be between 1 and ${ctx.league.size}.`,
+    };
   }
 
   const supabase = await createClient();

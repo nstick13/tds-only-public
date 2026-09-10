@@ -5,21 +5,22 @@ import { useRouter } from "next/navigation";
 import { PixelPanel } from "@/components/ui/PixelPanel";
 import { PixelButton } from "@/components/ui/PixelButton";
 import { Badge } from "@/components/ui/Badge";
-import { removeMemberAction, updateMemberAction } from "@/app/l/[slug]/commish/actions";
-import { LEAGUE_SIZE } from "@/lib/league";
+import {
+  removeMemberAction,
+  updateLeagueSizeAction,
+  updateMemberAction,
+} from "@/app/l/[slug]/commish/actions";
 import { memberName, type LeagueMember } from "@/lib/types";
+import { LEAGUE_SIZES } from "@/lib/league";
 
 interface MemberAdminProps {
   slug: string;
   members: LeagueMember[];
   /** The signed-in commissioner, so the table can refuse to let them break themselves. */
   currentUserId: string;
+  /** Seats in THIS league (6-10). Not a global constant any more. */
+  size: number;
 }
-
-const SEAT_OPTIONS: (number | null)[] = [
-  null,
-  ...Array.from({ length: LEAGUE_SIZE }, (_, i) => i + 1),
-];
 
 /**
  * Seats, commissioners, and who's still in the league.
@@ -36,7 +37,18 @@ const SEAT_OPTIONS: (number | null)[] = [
  * managers, so "seated" and "benched" is the real distinction: clearing a
  * seat benches someone without removing them, and they keep watching.
  */
-export function MemberAdmin({ slug, members, currentUserId }: MemberAdminProps) {
+export function MemberAdmin({
+  slug,
+  members,
+  currentUserId,
+  size,
+}: MemberAdminProps) {
+  // Depends on the league's size, so it cannot be module-level any more.
+  const seatOptions: (number | null)[] = [
+    null,
+    ...Array.from({ length: size }, (_, i) => i + 1),
+  ];
+
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const [message, setMessage] = useState<{ text: string; ok: boolean } | null>(null);
@@ -86,10 +98,44 @@ export function MemberAdmin({ slug, members, currentUserId }: MemberAdminProps) 
     <PixelPanel raised className="flex flex-col gap-4">
       <h2 className="font-pixel text-sm text-retro-yellow">Members</h2>
       <p className="font-mono text-sm text-retro-offwhite/70">
-        {seatsTaken} of {LEAGUE_SIZE} seats filled. A member without a seat is a
+        {seatsTaken} of {size} seats filled. A member without a seat is a
         spectator: they see everything and draft nothing. Clearing a seat
         benches someone without removing them.
       </p>
+
+      {/* Resizing lives here rather than on the create form alone, because the
+          case that matters is discovered late: you planned for eight, six
+          turned up, and a real six-manager league beats two empty seats and a
+          short draft every week. Shrinking past an occupied seat is refused —
+          by a database trigger, so it holds even if someone accepts an invite
+          at the same instant. */}
+      <div className="flex flex-wrap items-center gap-2 border-t-2 border-retro-offwhite/10 pt-3">
+        <span className="font-mono text-sm text-retro-offwhite/70">
+          League seats:
+        </span>
+        {LEAGUE_SIZES.map((n) => (
+          <button
+            key={n}
+            type="button"
+            disabled={isPending}
+            onClick={() => run(`${n} seats`, () => updateLeagueSizeAction(slug, n))}
+            aria-pressed={size === n}
+            className={[
+              "font-pixel text-[10px] px-2 py-1 border-2 transition-colors disabled:opacity-50",
+              size === n
+                ? "bg-retro-yellow text-field border-retro-yellow"
+                : "text-retro-offwhite border-retro-offwhite/40 hover:border-retro-offwhite",
+            ].join(" ")}
+          >
+            {n}
+          </button>
+        ))}
+        {seatsTaken > 0 ? (
+          <span className="font-mono text-sm text-retro-offwhite/50">
+            can&apos;t go below {seatsTaken}
+          </span>
+        ) : null}
+      </div>
 
       <div className="overflow-x-auto">
         <table className="w-full font-mono text-base text-retro-offwhite border-collapse">
@@ -130,7 +176,7 @@ export function MemberAdmin({ slug, members, currentUserId }: MemberAdminProps) 
                       disabled={isPending}
                       onChange={(e) => handleSeat(member, e.target.value)}
                     >
-                      {SEAT_OPTIONS.map((seat) => (
+                      {seatOptions.map((seat) => (
                         <option key={seat ?? "none"} value={seat ?? ""}>
                           {seat ?? "— benched —"}
                         </option>

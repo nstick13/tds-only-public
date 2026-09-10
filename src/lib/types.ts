@@ -76,6 +76,8 @@ export interface League {
   name: string;
   /** NFL season year this league plays; a season is named for the year it starts in. */
   season: number;
+  /** Managers in this league, 6-10. See src/lib/league.ts for why 10 is the ceiling. */
+  size: number;
   status: LeagueStatus;
   created_by: string | null;
   created_at: string;

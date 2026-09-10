@@ -5,7 +5,7 @@ import { PixelPanel } from "@/components/ui/PixelPanel";
 import { PixelButton } from "@/components/ui/PixelButton";
 import { PixelLink } from "@/components/ui/PixelLink";
 import { Badge } from "@/components/ui/Badge";
-import { LEAGUE_SIZE } from "@/lib/league";
+import { MAX_LEAGUE_SIZE, MIN_LEAGUE_SIZE } from "@/lib/league";
 
 /**
  * The instance home page, and the only route with two completely different
@@ -93,7 +93,9 @@ function SignedOut() {
         </p>
 
         <ul className="font-mono text-lg text-retro-offwhite/80 flex flex-col gap-1 list-disc pl-5">
-          <li>{LEAGUE_SIZE} managers, a fresh snake draft every single week</li>
+          <li>
+            {MIN_LEAGUE_SIZE}&ndash;{MAX_LEAGUE_SIZE} managers, a fresh snake draft every single week
+          </li>
           <li>Rosters wipe clean each week — last week&apos;s stars are back in the pool</li>
           <li>Finish last, pick first: the next draft is seeded worst-to-first</li>
         </ul>

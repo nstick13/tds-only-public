@@ -6,7 +6,6 @@ import { PixelPanel } from "@/components/ui/PixelPanel";
 import { PixelButton } from "@/components/ui/PixelButton";
 import { Badge } from "@/components/ui/Badge";
 import { openSeasonAction, finalizeAndAdvanceAction } from "@/app/l/[slug]/commish/actions";
-import { LEAGUE_SIZE } from "@/lib/league";
 import type { Stage, LeagueMember } from "@/lib/types";
 
 const STATUS_LABEL: Record<Stage["status"], string> = {
@@ -22,12 +21,20 @@ interface SeasonControlProps {
   /** Seated managers only — the people the draft will actually deal to. */
   managers: LeagueMember[];
   currentStage: Stage | null;
+  /** Seats in THIS league (6-10). */
+  size: number;
 }
 
 /** Minimum seats for a draft that means anything. Mirrored in openSeasonAction. */
 const MIN_MANAGERS = 2;
 
-export function SeasonControl({ slug, stages, managers, currentStage }: SeasonControlProps) {
+export function SeasonControl({
+  slug,
+  stages,
+  managers,
+  currentStage,
+  size,
+}: SeasonControlProps) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const [message, setMessage] = useState<{ text: string; ok: boolean } | null>(null);
@@ -67,7 +74,7 @@ export function SeasonControl({ slug, stages, managers, currentStage }: SeasonCo
       <h2 className="font-pixel text-sm text-retro-yellow">Season Control</h2>
 
       <div className="flex flex-wrap items-center gap-3 font-mono text-base text-retro-offwhite/80">
-        <span>Seated managers: {managers.length}/{LEAGUE_SIZE}</span>
+        <span>Seated managers: {managers.length}/{size}</span>
         {currentStage ? (
           <span className="flex items-center gap-2">
             Current stage: {currentStage.name}
@@ -101,12 +108,12 @@ export function SeasonControl({ slug, stages, managers, currentStage }: SeasonCo
           </span>
         ) : managers.length < MIN_MANAGERS ? (
           <span className="font-mono text-sm text-retro-yellow">
-            {managers.length}/{LEAGUE_SIZE} seated — invite at least{" "}
+            {managers.length}/{size} seated — invite at least{" "}
             {MIN_MANAGERS} managers before opening.
           </span>
-        ) : managers.length < LEAGUE_SIZE ? (
+        ) : managers.length < size ? (
           <span className="font-mono text-sm text-retro-yellow">
-            {managers.length}/{LEAGUE_SIZE} seated — it&apos;ll play fine short.
+            {managers.length}/{size} seated — it&apos;ll play fine short.
           </span>
         ) : null}
       </div>

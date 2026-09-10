@@ -1,27 +1,86 @@
 /**
  * League-shape constants and slug handling.
  *
- * LEAGUE_SIZE is deliberately a constant and not a per-league setting. This
- * app hosts one specific game — 8 managers, weekly full redraft, TDs only —
- * and the number 8 is load-bearing in three places that would all have to
- * move together to change it: the seat range in `league_members`
- * (CHECK seat between 1 and 8), the pick-count range in `draft_order`
- * (CHECK pick_number between 1 and 56 = 8 x ROSTER_SIZE), and the snake
- * generation in src/lib/draftOrder.ts. Making it configurable is a real
- * feature, not a constant swap; see docs/ARCHITECTURE.md.
+ * League size is a per-league setting (`leagues.size`), bounded 6-10. The
+ * ceiling is not arbitrary and not a UI preference — it is quarterbacks.
+ * Rosters carry TWO QBs and the player pool is exclusive per stage, so a
+ * league needs `size x 2` startable QBs simultaneously. There are 32 NFL
+ * starters and a bye week takes 4-6 teams out, leaving roughly 26:
+ *
+ *      8 managers -> 16 QBs   comfortable
+ *     10 managers -> 20 QBs   tight; last picks get poor starters
+ *     12 managers -> 24 QBs   ~92% of the pool gone, late picks draft backups
+ *
+ * No other position comes close to binding. The floor is 6 because the
+ * exclusive pool is the point of the game — with fewer managers nothing is
+ * ever meaningfully unavailable.
+ *
+ * These bounds are mirrored in SQL by the `leagues_size_range` CHECK and the
+ * enforce_seat_within_league_size() trigger (0009_league_size.sql). Changing
+ * them means changing both.
  */
 import { ROSTER_SIZE } from "@/lib/roster";
 
-/** Managers per league. Mirrored by the seat CHECK constraint in SQL. */
-export const LEAGUE_SIZE = 8;
+/** Smallest league the game still works at. */
+export const MIN_LEAGUE_SIZE = 6;
+/** Largest league the QB pool supports. See the header. */
+export const MAX_LEAGUE_SIZE = 10;
+/** What a new league gets unless the creator picks otherwise. */
+export const DEFAULT_LEAGUE_SIZE = 8;
+
+/** Every size a league may be created at, for rendering a chooser. */
+export const LEAGUE_SIZES: number[] = Array.from(
+  { length: MAX_LEAGUE_SIZE - MIN_LEAGUE_SIZE + 1 },
+  (_, i) => MIN_LEAGUE_SIZE + i,
+);
+
+/** True if `size` is a league size this app will accept. */
+export function isValidLeagueSize(size: number): boolean {
+  return (
+    Number.isInteger(size) && size >= MIN_LEAGUE_SIZE && size <= MAX_LEAGUE_SIZE
+  );
+}
 
 /**
- * Total picks in one stage's snake draft. Derived, so a roster-shape change
- * grows the draft automatically — but note the draft_order.pick_number CHECK
- * constraint in supabase/migrations/0004_league_tables.sql does NOT follow,
- * and needs a migration alongside.
+ * Total picks in one stage's snake draft: one round per roster slot.
+ *
+ * Derived from both size and ROSTER_SIZE, so neither can drift from the
+ * draft. Note the draft_order.pick_number CHECK constraint does NOT follow
+ * automatically — it is set to the widest legal value (MAX_LEAGUE_SIZE x
+ * ROSTER_SIZE = 70) and needs a migration if either bound moves.
  */
-export const DRAFT_PICK_COUNT = LEAGUE_SIZE * ROSTER_SIZE;
+export function draftPickCount(leagueSize: number): number {
+  return leagueSize * ROSTER_SIZE;
+}
+
+/**
+ * Roughly how long a live draft takes, in minutes, at a realistic pace.
+ *
+ * Surfaced when choosing a size because it is the cost people actually feel:
+ * this is a live draft EVERY week, all season, with everyone present. The
+ * difference between 8 and 10 managers is about seven minutes a week, which
+ * is a bigger deal over eighteen weeks than it sounds.
+ */
+export function estimatedDraftMinutes(leagueSize: number): number {
+  const SECONDS_PER_PICK = 30;
+  return Math.round((draftPickCount(leagueSize) * SECONDS_PER_PICK) / 60);
+}
+
+/**
+ * How many startable QBs a league needs at once, against the ~26 available in
+ * a bye week. Drives the warning on the size chooser.
+ */
+export function qbPressure(leagueSize: number): {
+  needed: number;
+  available: number;
+  tight: boolean;
+} {
+  // 32 NFL starters less 4-6 teams on bye. The conservative end, because the
+  // warning should fire on the bad weeks, not the average ones.
+  const available = 26;
+  const needed = leagueSize * 2;
+  return { needed, available, tight: needed / available > 0.7 };
+}
 
 /** Stages in a season: 18 regular-season weeks + 4 postseason rounds. */
 export const STAGE_COUNT = 22;

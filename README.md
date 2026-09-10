@@ -4,7 +4,7 @@ A fantasy football league where **only touchdowns count** and **you redraft
 your entire roster every single week**.
 
 No season-long teams. No waiver wire. No trades. Every week — and every
-playoff round — all eight managers wipe their rosters and draft again from
+playoff round — every manager wipes their roster and drafts again from
 scratch, live, watching each other pick in real time. A player can only be on
 one roster per week, so the pool empties fast and last place drafts first.
 
@@ -13,6 +13,11 @@ Yards are worth nothing. A quarterback who throws for 400 yards and no
 touchdowns scores zero.
 
 **Roster** — 2 QB, 2 RB, 2 WR, 1 TE. Seven picks, seven rounds, snake order.
+
+**League size** — 6 to 10 managers, 8 by default. The ceiling is quarterbacks:
+two per roster and an exclusive pool means a league needs `size × 2` startable
+QBs at once, against roughly 26 in a bye week. Ten is already tight; twelve
+would have half the league starting backups.
 
 **The draft order is the whole game.** Round 1 runs worst-to-first from last
 week's standings, so a terrible week is rewarded with the first pick at the
@@ -24,8 +29,9 @@ and 9th back to back, and spends the whole draft watching the good ones go.
 ## Run your own league
 
 This is a hosted app: one instance runs many independent leagues. Sign in
-with Google, create a league, and share the invite link with seven friends.
-The first eight people to accept fill the seats.
+with Google, create a league, pick how many managers it seats, and share the
+invite link. People fill the seats in the order they accept; anyone arriving
+after the last seat joins as a spectator and can be given a seat later.
 
 Whoever creates the league is its commissioner: they open the season, manage
 seats, fix rosters after a bad sync, and finalize each week — which

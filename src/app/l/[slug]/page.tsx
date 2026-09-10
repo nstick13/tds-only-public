@@ -1,5 +1,5 @@
 import { PixelPanel } from "@/components/ui/PixelPanel";
-import { InviteLink } from "@/components/league/InviteLink";
+import { SeasonSetup } from "@/components/league/SeasonSetup";
 import { Badge } from "@/components/ui/Badge";
 import { StandingsTable, type StandingsRow } from "@/components/standings/StandingsTable";
 import { ExpandableStandings } from "@/components/standings/ExpandableStandings";
@@ -9,11 +9,12 @@ import { requireLeague } from "@/lib/league/context";
 import {
   getAllWeeklyResults,
   getCurrentStage,
+  getLeagueInvites,
+  getMembers,
   getPlayers,
   getSeatedMembers,
   getStages,
 } from "@/lib/db";
-import { LEAGUE_SIZE } from "@/lib/league";
 import type { Player, Stage, WeeklyResult } from "@/lib/types";
 
 /**
@@ -31,20 +32,40 @@ export default async function LeaguePage({
   params: { slug: string };
   searchParams: { created?: string };
 }) {
-  const { league } = await requireLeague(params.slug);
+  const { league, membership } = await requireLeague(params.slug);
 
   // ?created=<code> is set exactly once, by the redirect out of
   // /leagues/new. A brand-new league is empty and slightly pointless, so the
   // first thing its commissioner sees is the link that fixes that.
   const freshInviteCode = searchParams.created?.trim() || null;
 
-  const [stages, allResults, members, currentStage, players] = await Promise.all([
-    getStages(league.id),
-    getAllWeeklyResults(league.id),
-    getSeatedMembers(league.id),
-    getCurrentStage(league.id),
-    getPlayers(),
-  ]);
+  const [stages, allResults, members, allMembers, currentStage, players] =
+    await Promise.all([
+      getStages(league.id),
+      getAllWeeklyResults(league.id),
+      getSeatedMembers(league.id),
+      getMembers(league.id),
+      getCurrentStage(league.id),
+      getPlayers(),
+    ]);
+
+  // The season has not started while every stage is still 'upcoming'. Derived
+  // from the stages rather than leagues.status because the stages are what the
+  // draft actually reads — a status column that drifted would put the league
+  // in a state the rest of the page disagrees with.
+  const seasonNotStarted = stages.every((s: Stage) => s.status === "upcoming");
+
+  // Only a commissioner can read invite codes (RLS), so this is [] for
+  // everyone else and the panel simply omits the link.
+  const invites = seasonNotStarted && membership.is_commissioner
+    ? await getLeagueInvites(league.id)
+    : [];
+  const usableInvite = invites.find(
+    (i) =>
+      !i.revoked_at &&
+      (!i.expires_at || new Date(i.expires_at) > new Date()) &&
+      (i.max_uses == null || i.uses < i.max_uses),
+  );
 
   const nameByManagerId = namesByManager(members);
   const playerById = new Map<string, Player>(players.map((p: Player) => [p.id, p]));
@@ -71,18 +92,15 @@ export default async function LeaguePage({
 
   return (
     <div className="flex flex-col gap-6">
-      {freshInviteCode ? (
-        <PixelPanel raised className="flex flex-col gap-3 border-retro-yellow">
-          <h2 className="font-pixel text-base text-retro-yellow">
-            {league.name} is live — now fill the seats
-          </h2>
-          <p className="font-mono text-lg text-retro-offwhite/80">
-            Send this link to the other {LEAGUE_SIZE - 1} managers. It seats
-            whoever opens it, first come first served, and expires in 7 days —
-            the Commish page can mint a fresh one any time.
-          </p>
-          <InviteLink code={freshInviteCode} />
-        </PixelPanel>
+      {seasonNotStarted ? (
+        <SeasonSetup
+          leagueName={league.name}
+          size={league.size}
+          members={allMembers}
+          isCommissioner={membership.is_commissioner}
+          inviteCode={usableInvite?.code ?? freshInviteCode}
+          justCreated={!!freshInviteCode}
+        />
       ) : null}
 
       {/* This week */}

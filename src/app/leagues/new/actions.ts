@@ -1,7 +1,13 @@
 "use server";
 
 import { createClient } from "@/lib/supabase/server";
-import { currentNflSeason, slugify, suffixSlug } from "@/lib/league";
+import {
+  DEFAULT_LEAGUE_SIZE,
+  currentNflSeason,
+  isValidLeagueSize,
+  slugify,
+  suffixSlug,
+} from "@/lib/league";
 
 /**
  * League creation. Everything happens inside the `create_league` RPC — the
@@ -41,6 +47,15 @@ export async function createLeagueAction(
   formData: FormData,
 ): Promise<CreateLeagueResult> {
   const name = String(formData.get("name") ?? "").trim();
+  const sizeRaw = formData.get("size");
+  const size = sizeRaw == null ? DEFAULT_LEAGUE_SIZE : Number(sizeRaw);
+
+  if (!isValidLeagueSize(size)) {
+    // The form only offers legal sizes, so this is a hand-crafted request.
+    // The DB would reject it too (leagues_size_range); saying so here just
+    // makes the failure legible instead of surfacing a constraint name.
+    return { ok: false, error: "That isn't a league size this app supports." };
+  }
 
   if (name.length < 1) {
     return { ok: false, error: "Give the league a name." };
@@ -74,6 +89,7 @@ export async function createLeagueAction(
       p_name: name,
       p_slug: slug,
       p_season: currentNflSeason(),
+      p_size: size,
     });
 
     if (!error) {

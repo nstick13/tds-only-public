@@ -4,8 +4,8 @@ This document is the contract between the parts of this app. Read it before
 adding tables, routes, or conventions of your own.
 
 `tds-only-public` runs **one instance** that hosts **many independent
-leagues** of the same game: TD-only scoring, weekly full redraft, 8 managers,
-QB2/RB2/WR2/TE1. It is a multi-tenant fork of the private single-league app
+leagues** of the same game: TD-only scoring, weekly full redraft, 6-10
+managers (per league), QB2/RB2/WR2/TE1. It is a multi-tenant fork of the private single-league app
 `tds-only-league`. If you are coming from that codebase, the section
 "What changed from the single-league app" at the bottom is the fastest way in.
 
@@ -67,11 +67,11 @@ standings join **stage → (season, season_type, week_num) → nfl_week_stats**.
 | Table | Group | Notes |
 | --- | --- | --- |
 | `profiles` | identity | Owner-readable only. |
-| `leagues` | league | `slug` is the URL key. `season` = NFL season year. |
-| `league_members` | league | `seat` 1–8 (null = spectator), `is_player`, `is_commissioner`, `display_name`. |
+| `leagues` | league | `slug` is the URL key. `season` = NFL season year. `size` = managers, 6–10. |
+| `league_members` | league | `seat` 1–`leagues.size` (null = spectator), `is_player`, `is_commissioner`, `display_name`. |
 | `league_invites` | league | Codes are credentials — commissioner-readable only. |
 | `stages` | league | 22 per league. `id` is a **uuid**, not a small int. Address as `(league_id, ordinal)`. |
-| `draft_order` | league | 56 picks = 8 × `ROSTER_SIZE`. |
+| `draft_order` | league | `size` × `ROSTER_SIZE` picks (at most 70). |
 | `roster_picks` | league | `unique(stage_id, player_id)` ⇒ exclusive pool *per league per stage*. |
 | `weekly_results` | league | Written at finalize time; not computed live. |
 | `players` | global | Tank01 `playerID` as `id`. |
@@ -170,7 +170,7 @@ layout and in RLS, not in the matcher.
   `create trigger` with `drop trigger if exists`, etc.
 - **Constants have one home.** `src/lib/scoring.ts` (point values),
   `src/lib/roster.ts` (`ROSTER_SHAPE`, `ROSTER_SIZE`), `src/lib/league.ts`
-  (`LEAGUE_SIZE`, `DRAFT_PICK_COUNT`, slug rules, `currentNflSeason`). The DB
+  (league-size bounds, `draftPickCount`, slug rules, `currentNflSeason`). The DB
   mirrors these in the `nfl_week_stats.points` generated column, the
   `enforce_roster_limits()` trigger, and the `seat` / `pick_number` CHECK
   constraints. **If a rule changes, all of those move together.**
