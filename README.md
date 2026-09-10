@@ -81,12 +81,21 @@ Auth is Google OAuth only — no passwords, no email confirmation step.
 3. Paste those two values back into the Supabase Google provider form.
 4. Supabase → **Authentication → URL Configuration**:
    - **Site URL**: your deployed app, e.g. `https://your-app.vercel.app`
-   - **Redirect URLs**: add both
-     `https://your-app.vercel.app/auth/callback` and
-     `http://localhost:3000/auth/callback`
+   - **Redirect URLs**: add **wildcard** entries, not bare paths:
+     ```
+     https://your-app.vercel.app/**
+     http://localhost:3000/**
+     ```
 
 That last step is what stops sign-in from bouncing people to `localhost`.
 Supabase only honours redirect targets on this list.
+
+**Use the wildcards.** The app does not send a bare
+`/auth/callback` — an invite link has to survive the OAuth round trip, so it
+signs in with `/auth/callback?next=/join/<code>`. A Redirect URL entry without
+a wildcard may not match a URL carrying a query string, and the failure is
+nasty to diagnose: ordinary sign-in works fine, and *only* invite links break,
+which is the one flow you cannot test without a second person.
 
 ### 3. Tank01 (stats)
 
