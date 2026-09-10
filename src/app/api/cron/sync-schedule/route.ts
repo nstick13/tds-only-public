@@ -29,7 +29,6 @@
 // Kickoff comes from each game's `gameTime_epoch` (unix seconds), which is
 // unambiguous — unlike a local time string, it needs no timezone guessing.
 import { NextResponse } from "next/server";
-import { createServiceRoleClient } from "@/lib/supabase/server";
 import {
   byeWeeksFor,
   describeWeek,
@@ -46,6 +45,7 @@ import {
   readCronRequest,
   writeSyncLog,
   type ServiceClient,
+  serviceClientOrError,
 } from "../_lib/cron";
 import {
   dedupeWeeks,
@@ -184,7 +184,9 @@ async function run(req: Request): Promise<NextResponse> {
   const denied = authorizeCron(req);
   if (denied) return denied;
 
-  const supabase = createServiceRoleClient();
+  const svc = serviceClientOrError();
+  if ("error" in svc) return svc.error;
+  const supabase = svc.client;
 
   try {
     const request = await readCronRequest(req);

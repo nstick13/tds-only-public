@@ -6,10 +6,24 @@
 // ===========================================================================
 // CRON CADENCES AND THE CALL BUDGET
 // ===========================================================================
-// The schedules live in vercel.json, which is strict JSON and cannot carry a
-// comment, so the reasoning lives here. Ported from the pg_cron budget in
-// reference-league/supabase/migrations/0004_cron.sql and the day-of-week fix
-// in 0011_sync_scores_every_day.sql.
+// THESE SCHEDULES ARE NOT CURRENTLY IN vercel.json. Vercel's Hobby plan
+// allows at most 2 cron jobs and refuses ANY expression that runs more than
+// once a day — it rejects the deployment outright, it does not degrade. So
+// vercel.json ships without a `crons` block and something external drives
+// these routes instead (see docs/SCHEDULING.md).
+//
+// To run them as Vercel Cron on a Pro plan, paste this into vercel.json:
+//
+//   "crons": [
+//     { "path": "/api/cron/sync-players",  "schedule": "0 */6 * * *" },
+//     { "path": "/api/cron/sync-schedule", "schedule": "30 */12 * * *" },
+//     { "path": "/api/cron/sync-scores",   "schedule": "*/30 * * * *" },
+//     { "path": "/api/cron/apply-locks",   "schedule": "*/5 * * * *" }
+//   ]
+//
+// The reasoning behind those cadences follows. Ported from the pg_cron budget
+// in the single-league app's 0004_cron.sql and the day-of-week fix in
+// 0011_sync_scores_every_day.sql.
 //
 //   sync-players    0 */6 * * *     4 runs/day x ~3 paginated calls  = ~12/day
 //   sync-schedule   30 */12 * * *   2 runs/day x (1 getNFLTeams + 1 per
@@ -41,12 +55,9 @@
 // windows so easy to get wrong in the first place. Do not reintroduce them —
 // the headroom to just run all week was always there.
 //
-// VERCEL HOBBY PLAN LIMITATION: Hobby allows only 2 cron jobs, and triggers
-// them once per day (the schedule is treated as a daily hint, not honoured
-// minute-by-minute). The four schedules above are what is CORRECT on Pro and
-// are written for Pro. On Hobby this app cannot lock rosters at kickoff or
-// follow a live slate at all; run it on Pro, or drive these routes from an
-// external scheduler with the same Bearer token.
+// Whatever drives these routes, the contract is the same: an HTTP GET or POST
+// with `Authorization: Bearer $CRON_SECRET`. Vercel Cron sends that header
+// automatically; an external scheduler has to send it explicitly.
 import { NextResponse } from "next/server";
 import { createServiceRoleClient } from "@/lib/supabase/server";
 import type { SyncSource, SyncStatus } from "@/lib/types";
@@ -111,6 +122,35 @@ function timingSafeEquals(a: string, b: string): boolean {
   const bufB = Buffer.from(b);
   if (bufA.length !== bufB.length) return false;
   return timingSafeEqual(bufA, bufB);
+}
+
+/**
+ * Build the service-role client, or return a Response explaining why we
+ * can't.
+ *
+ * createServiceRoleClient() THROWS when SUPABASE_SERVICE_ROLE_KEY is missing
+ * or misnamed. Called at the top of a route handler — outside its try block —
+ * that throw escapes to the framework and the caller gets a bare 500 with an
+ * empty body, no sync_log row, and nothing in the response naming the cause.
+ * That is the precise failure mode src/lib/supabase/env.ts was written to
+ * prevent, so it must not be reintroduced one layer up.
+ *
+ * 503, like the CRON_SECRET guard: the fault is the deployment's, not the
+ * caller's.
+ */
+export function serviceClientOrError():
+  | { client: ServiceClient }
+  | { error: NextResponse } {
+  try {
+    return { client: createServiceRoleClient() };
+  } catch (err) {
+    return {
+      error: NextResponse.json(
+        { ok: false, error: err instanceof Error ? err.message : String(err) },
+        { status: 503 },
+      ),
+    };
+  }
 }
 
 /**

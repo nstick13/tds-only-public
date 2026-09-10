@@ -20,8 +20,9 @@ const vt323 = VT323({
 });
 
 export const metadata: Metadata = {
-  title: "TD's Only League",
-  description: "8-manager private fantasy football league. TDs only.",
+  title: "TD's Only",
+  description:
+    "Fantasy football where only touchdowns count and you redraft your whole roster every week. Start a league with 7 friends.",
   manifest: "/manifest.json",
   // iOS only offers Web Push to a site launched from the home screen, so the
   // install path is a feature, not a nicety: appleWebApp gives the launcher

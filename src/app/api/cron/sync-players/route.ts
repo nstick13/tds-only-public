@@ -20,9 +20,10 @@
 // reference-league/reference/tank01/getNFLPlayerList.sample.json. Do not add a
 // field that isn't in that sample.
 import { NextResponse } from "next/server";
-import { createServiceRoleClient } from "@/lib/supabase/server";
 import { getPlayerList, type Tank01Player } from "@/lib/tank01";
-import { authorizeCron, errorMessage, writeSyncLog } from "../_lib/cron";
+import { authorizeCron, errorMessage, writeSyncLog,
+  serviceClientOrError,
+} from "../_lib/cron";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -115,7 +116,9 @@ async function run(req: Request): Promise<NextResponse> {
   const denied = authorizeCron(req);
   if (denied) return denied;
 
-  const supabase = createServiceRoleClient();
+  const svc = serviceClientOrError();
+  if ("error" in svc) return svc.error;
+  const supabase = svc.client;
   const startedAt = Date.now();
 
   try {

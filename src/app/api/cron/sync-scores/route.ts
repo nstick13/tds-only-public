@@ -48,7 +48,6 @@
 // same claim through a league's copy of the week; keying on the week itself
 // makes it more directly true, not less.
 import { NextResponse } from "next/server";
-import { createServiceRoleClient } from "@/lib/supabase/server";
 import {
   describeWeek,
   getBoxScore,
@@ -67,6 +66,7 @@ import {
   readCronRequest,
   writeSyncLog,
   type ServiceClient,
+  serviceClientOrError,
 } from "../_lib/cron";
 import { describeSkipped, resolveTargetWeeks } from "../_lib/weeks";
 
@@ -281,7 +281,9 @@ async function run(req: Request): Promise<NextResponse> {
   const denied = authorizeCron(req);
   if (denied) return denied;
 
-  const supabase = createServiceRoleClient();
+  const svc = serviceClientOrError();
+  if ("error" in svc) return svc.error;
+  const supabase = svc.client;
 
   try {
     const request = await readCronRequest(req);

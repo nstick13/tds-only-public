@@ -1,9 +1,3 @@
 {
-  "$schema": "https://openapi.vercel.sh/vercel.json",
-  "crons": [
-    { "path": "/api/cron/sync-players", "schedule": "0 */6 * * *" },
-    { "path": "/api/cron/sync-schedule", "schedule": "30 */12 * * *" },
-    { "path": "/api/cron/sync-scores", "schedule": "*/30 * * * *" },
-    { "path": "/api/cron/apply-locks", "schedule": "*/5 * * * *" }
-  ]
+  "$schema": "https://openapi.vercel.sh/vercel.json"
 }
