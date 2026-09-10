@@ -14,7 +14,7 @@
  *   - anything else (including "Active") — no warning.
  * A player who is on_bye is always blocked, regardless of status.
  */
-import type { Player, DraftOrderRow, RosterPick } from "@/lib/types";
+import type { Player, DraftOrderRow, RosterPick, StagePlayer } from "@/lib/types";
 import { ROSTER_SHAPE, ROSTER_SIZE, type Position } from "@/lib/roster";
 
 const BLOCKED_STATUSES = new Set(["OUT", "IR", "PUP"]);
@@ -29,14 +29,14 @@ export function isWarningStatus(status: string): boolean {
 }
 
 /** True if nothing about the player's own status/bye disqualifies them (does not check roster caps or whether they're already taken). */
-export function isPlayerDraftable(player: Pick<Player, "on_bye" | "status">): boolean {
+export function isPlayerDraftable(player: Pick<StagePlayer, "on_bye" | "status">): boolean {
   if (player.on_bye) return false;
   if (isBlockedStatus(player.status)) return false;
   return true;
 }
 
 export function reasonPlayerBlocked(
-  player: Pick<Player, "on_bye" | "status">,
+  player: Pick<StagePlayer, "on_bye" | "status">,
 ): string | null {
   if (player.on_bye) return "Player is on a bye this week";
   if (isBlockedStatus(player.status)) return `Player is ${player.status}`;

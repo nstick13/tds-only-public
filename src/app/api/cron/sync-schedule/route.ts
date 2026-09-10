@@ -3,7 +3,7 @@
 // For every NFL week any league on this instance is currently using:
 //   (a) upserts that week's games into the global `nfl_games` table — game id,
 //       teams, kickoff and status.
-//   (b) sets players.on_bye from the teams on bye that week.
+//   (b) records which teams are on bye each week, into nfl_team_byes.
 //
 // WHERE KICKOFF WENT
 // ---------------------------------------------------------------------------
@@ -38,6 +38,7 @@ import {
   kickoffAt,
   type Tank01Team,
   type WeekKey,
+  weekKeyId,
 } from "@/lib/tank01";
 import {
   authorizeCron,
@@ -123,11 +124,18 @@ async function syncWeek(
 }
 
 /**
- * Flip players.on_bye for one reference week.
+ * Record which teams are off in one week, into nfl_team_byes.
  *
- * `players.on_bye` is a single instance-wide boolean, so it can only ever
- * describe ONE week — see the note at the call site for which one gets picked
- * when leagues are on different weeks.
+ * The single-league app flipped a global `players.on_bye` boolean here. That
+ * could only ever describe ONE week, and on a multi-league instance "the
+ * current week" is plural — so whichever week it described, it was wrong for
+ * some other league, and a player wrongly marked on bye cannot be drafted at
+ * all. Keyed by week instead, this is correct for every league at once, and
+ * the whole "which week does the flag mean" question disappears.
+ *
+ * Writes are per (season, week): the rows for the week being synced are
+ * replaced wholesale, so a corrected bye schedule cleans up after itself
+ * rather than leaving a stale team flagged forever.
  */
 async function applyByes(
   supabase: ServiceClient,
@@ -135,12 +143,10 @@ async function applyByes(
   week: WeekKey,
 ): Promise<string[]> {
   const byeTeamIds: string[] = [];
-  const activeTeamIds: string[] = [];
   for (const team of teams) {
-    const byes = byeWeeksFor(team, week.season);
-    (byes.includes(week.week_num) ? byeTeamIds : activeTeamIds).push(
-      String(team.teamID),
-    );
+    if (byeWeeksFor(team, week.season).includes(week.week_num)) {
+      byeTeamIds.push(String(team.teamID));
+    }
   }
 
   if (byeTeamIds.length > MAX_PLAUSIBLE_BYE_TEAMS) {
@@ -151,21 +157,26 @@ async function applyByes(
     );
   }
 
-  const now = new Date().toISOString();
+  // Replace rather than upsert: a team REMOVED from the bye list has to lose
+  // its row, and an upsert would silently leave it behind.
+  const { error: delError } = await supabase
+    .from("nfl_team_byes")
+    .delete()
+    .eq("season", week.season)
+    .eq("week_num", week.week_num);
+  if (delError) throw new Error(`nfl_team_byes delete failed: ${delError.message}`);
+
   if (byeTeamIds.length > 0) {
-    const { error } = await supabase
-      .from("players")
-      .update({ on_bye: true, updated_at: now })
-      .in("nfl_team_id", byeTeamIds);
-    if (error) throw new Error(`players on_bye=true update failed: ${error.message}`);
+    const { error } = await supabase.from("nfl_team_byes").insert(
+      byeTeamIds.map((id) => ({
+        season: week.season,
+        nfl_team_id: id,
+        week_num: week.week_num,
+      })),
+    );
+    if (error) throw new Error(`nfl_team_byes insert failed: ${error.message}`);
   }
-  if (activeTeamIds.length > 0) {
-    const { error } = await supabase
-      .from("players")
-      .update({ on_bye: false, updated_at: now })
-      .in("nfl_team_id", activeTeamIds);
-    if (error) throw new Error(`players on_bye=false update failed: ${error.message}`);
-  }
+
   return byeTeamIds;
 }
 
@@ -201,9 +212,16 @@ async function run(req: Request): Promise<NextResponse> {
 
     const outcomes: WeekOutcome[] = [];
     const failures: string[] = [];
+    const byesByWeek = new Map<string, string[]>();
     for (const week of target.weeks) {
       try {
         outcomes.push(await syncWeek(supabase, week));
+        // Byes are recorded for EVERY week this run touches, not for one
+        // chosen "current" week. That choice only existed because the old
+        // global boolean could hold a single week; keyed by week there is
+        // nothing to choose, and an explicit re-run of October now repairs
+        // October's byes without disturbing the live week.
+        byesByWeek.set(weekKeyId(week), await applyByes(supabase, teams, week));
       } catch (err) {
         // One bad week must not cost the others their schedule — collect and
         // keep going, then fail the run as a whole.
@@ -211,36 +229,19 @@ async function run(req: Request): Promise<NextResponse> {
       }
     }
 
-    // WHICH WEEK on_bye DESCRIBES.
-    // The column is global and boolean, so it can hold exactly one week's
-    // byes. The draft UI is what reads it, so the answer is the newest week
-    // someone is currently DRAFTING; locked weeks are already drafted and no
-    // longer care. With every league on the real NFL calendar this is a single
-    // week anyway — the tie-break only matters in the window where one league
-    // has opened week N+1 while another is still locked on week N.
-    //
-    // An explicit re-run is excluded deliberately: repairing October's
-    // schedule in December must not re-flag October's byes over the live week.
-    const byeWeek = request.explicit ? null : pickByeWeek(target);
-    let byeTeamIds: string[] = [];
-    if (byeWeek) {
-      try {
-        byeTeamIds = await applyByes(supabase, teams, byeWeek);
-      } catch (err) {
-        failures.push(errorMessage(err));
-      }
-    }
-
     const status = failures.length > 0 ? "error" : "success";
     const gameCount = outcomes.reduce((n, o) => n + o.gameCount, 0);
     const undated = outcomes.reduce((n, o) => n + o.undatedGames, 0);
+    const byeSummary = outcomes
+      .map((o) => {
+        const ids = byesByWeek.get(weekKeyId(o.week)) ?? [];
+        return `${describeWeek(o.week)}: ${ids.length} on bye`;
+      })
+      .join("; ");
     const msg =
       `Synced ${gameCount} game(s) across ${outcomes.length}/${target.weeks.length} ` +
       `week(s): ${outcomes.map((o) => describeWeek(o.week)).join("; ") || "none"}. ` +
-      (byeWeek
-        ? `${byeTeamIds.length} team(s) on bye for ${describeWeek(byeWeek)} ` +
-          `(${byeTeamIds.join(", ") || "none"}).`
-        : "Bye flags left untouched (explicit week re-run).") +
+      `Byes — ${byeSummary || "none"}.` +
       (undated > 0 ? ` ${undated} game(s) without a kickoff time.` : "") +
       skipNote +
       (failures.length > 0 ? ` FAILURES: ${failures.join(" | ")}` : "");
@@ -250,8 +251,7 @@ async function run(req: Request): Promise<NextResponse> {
       {
         ok: failures.length === 0,
         weeks: outcomes,
-        byeWeek,
-        byeTeamIds,
+        byes: Object.fromEntries(byesByWeek),
         unaddressedStages: target.unaddressed.length,
         failures,
       },
@@ -262,22 +262,6 @@ async function run(req: Request): Promise<NextResponse> {
     await writeSyncLog(supabase, "schedule", "error", msg);
     return NextResponse.json({ ok: false, error: msg }, { status: 500 });
   }
-}
-
-/**
- * The week on_bye should describe: the latest week someone is drafting, or —
- * if nothing is open — the latest week in play at all. See the note above.
- */
-function pickByeWeek(target: TargetWeeks): WeekKey | null {
-  const drafting = dedupeWeeks(
-    target.stages.filter((s) => s.status === "draft_open"),
-  );
-  const candidates = drafting.length > 0 ? drafting : target.weeks;
-  return candidates.reduce<WeekKey | null>((best, w) => {
-    if (!best) return w;
-    if (w.season !== best.season) return w.season > best.season ? w : best;
-    return w.week_num > best.week_num ? w : best;
-  }, null);
 }
 
 export const GET = run;

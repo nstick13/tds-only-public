@@ -37,7 +37,6 @@ create table if not exists public.players (
   nfl_team_id text,
   status text not null default 'Active',
   status_detail text,
-  on_bye boolean not null default false,
   updated_at timestamptz not null default now(),
   last_synced_at timestamptz
 );
@@ -47,6 +46,34 @@ comment on table public.players is
 
 create index if not exists players_position_idx on public.players (position);
 create index if not exists players_name_idx on public.players (name);
+
+-- ----------------------------------------------------------------------------
+-- nfl_team_byes
+-- Which weeks each team is off, from Tank01's per-team byeWeeks.
+--
+-- The single-league app carried this as a boolean column on `players`. That
+-- works only when the instance is one league, because a single flag can
+-- describe exactly ONE week — and here "the current week" is plural: league A
+-- may be drafting Week 6 while league B is locked on Week 5. Whichever week
+-- the flag held, it was wrong for somebody, and a player wrongly marked on bye
+-- cannot be drafted at all.
+--
+-- Keyed by week, one row per team per bye, it is simply correct for every
+-- league at once and needs no "which week does this mean" tie-break anywhere.
+-- ----------------------------------------------------------------------------
+create table if not exists public.nfl_team_byes (
+  season smallint not null,
+  nfl_team_id text not null,
+  week_num smallint not null,
+  primary key (season, nfl_team_id, week_num)
+);
+
+comment on table public.nfl_team_byes is
+  'Bye weeks per team per season. Replaces the single-league app''s players.on_bye, which could only describe one week.';
+
+-- The read is always "who is off in THIS week", never "when is this team off".
+create index if not exists nfl_team_byes_week_idx
+  on public.nfl_team_byes (season, week_num);
 
 -- ----------------------------------------------------------------------------
 -- nfl_games

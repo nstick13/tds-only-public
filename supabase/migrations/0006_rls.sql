@@ -38,6 +38,7 @@ alter table public.roster_picks       enable row level security;
 alter table public.weekly_results     enable row level security;
 alter table public.players            enable row level security;
 alter table public.nfl_games          enable row level security;
+alter table public.nfl_team_byes      enable row level security;
 alter table public.nfl_week_stats     enable row level security;
 alter table public.sync_log           enable row level security;
 alter table public.manual_sync_runs   enable row level security;
@@ -345,6 +346,10 @@ create policy "players_select_authenticated"
 drop policy if exists "nfl_games_select_authenticated" on public.nfl_games;
 create policy "nfl_games_select_authenticated"
   on public.nfl_games for select to authenticated using (true);
+
+drop policy if exists "nfl_team_byes_select_authenticated" on public.nfl_team_byes;
+create policy "nfl_team_byes_select_authenticated"
+  on public.nfl_team_byes for select to authenticated using (true);
 
 drop policy if exists "nfl_week_stats_select_authenticated" on public.nfl_week_stats;
 create policy "nfl_week_stats_select_authenticated"

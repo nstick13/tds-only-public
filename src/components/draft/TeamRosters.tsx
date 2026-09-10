@@ -2,13 +2,13 @@
 
 import { PixelPanel } from "@/components/ui/PixelPanel";
 import { Badge } from "@/components/ui/Badge";
-import { memberName, type LeagueMember, type Player, type RosterPick } from "@/lib/types";
+import { memberName, type LeagueMember, type RosterPick, type StagePlayer } from "@/lib/types";
 import { POSITIONS, ROSTER_SHAPE, type Position } from "@/lib/roster";
 
 export interface TeamRostersProps {
   managers: LeagueMember[];
   picks: RosterPick[];
-  playersById: Map<string, Player>;
+  playersById: Map<string, StagePlayer>;
   currentUserId: string | null;
 }
 

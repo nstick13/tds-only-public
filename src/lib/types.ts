@@ -193,10 +193,38 @@ export interface Player {
   nfl_team_id: string | null;
   status: PlayerStatus;
   status_detail: string | null;
-  on_bye: boolean;
   updated_at: string;
   last_synced_at: string | null;
 }
+
+/**
+ * nfl_team_byes table — which weeks each team is off, per season.
+ *
+ * This replaces a `players.on_bye` boolean carried over from the single-league
+ * app. One global flag could only ever describe ONE week, and on a
+ * multi-league instance "the current week" is plural: league A can be drafting
+ * Week 6 while league B is locked on Week 5. Whichever week the flag described,
+ * it was wrong for somebody — and being wrong here is not cosmetic, because a
+ * player marked on bye cannot be drafted at all.
+ *
+ * Keyed by week, it is simply correct for every league at once.
+ */
+export interface NflTeamBye {
+  season: number;
+  nfl_team_id: string;
+  week_num: number;
+}
+
+/**
+ * A player as seen FROM a particular stage — the pool row plus whether that
+ * player's team is off in that stage's week.
+ *
+ * `on_bye` is not a column and cannot be: it is a fact about (player, week),
+ * not about the player. Build these with decorateWithByes() in
+ * src/lib/db/players.ts rather than assembling them by hand, so the bye set
+ * always comes from the stage you are actually rendering.
+ */
+export type StagePlayer = Player & { on_bye: boolean };
 
 /** nfl_games table — the NFL schedule. A stage locks at its week's first kickoff. */
 export interface NflGame {

@@ -8,9 +8,10 @@ import { Badge } from "@/components/ui/Badge";
 import { createClient } from "@/lib/supabase/client";
 import { subscribeToDraft } from "@/lib/realtime";
 import { draftPlayer, undoPick } from "@/app/l/[slug]/draft/actions";
+import { decorateWithByes } from "@/lib/byes";
 import { computeCurrentPick } from "@/components/draft/draftLogic";
 import { POSITIONS, ROSTER_SHAPE, ROSTER_SIZE, type Position } from "@/lib/roster";
-import { memberName, type Stage, type LeagueMember, type DraftOrderRow, type RosterPick, type Player } from "@/lib/types";
+import { memberName, type Stage, type LeagueMember, type DraftOrderRow, type RosterPick, type Player, type StagePlayer } from "@/lib/types";
 
 interface DraftPickForManagerProps {
   slug: string;
@@ -29,7 +30,7 @@ export function DraftPickForManager({
 
   const [draftOrder, setDraftOrder] = useState<DraftOrderRow[]>([]);
   const [picks, setPicks] = useState<RosterPick[]>([]);
-  const [players, setPlayers] = useState<Player[]>([]);
+  const [players, setPlayers] = useState<StagePlayer[]>([]);
   const [loading, setLoading] = useState(true);
 
   const [positionFilter, setPositionFilter] = useState<Position | "ALL">("ALL");
@@ -39,7 +40,7 @@ export function DraftPickForManager({
   const loadDraftState = useCallback(async () => {
     setLoading(true);
     const supabase = createClient();
-    const [orderRes, picksRes, playersRes] = await Promise.all([
+    const [orderRes, picksRes, playersRes, byesRes] = await Promise.all([
       supabase
         .from("draft_order")
         .select("*")
@@ -51,12 +52,30 @@ export function DraftPickForManager({
         .eq("stage_id", currentStage.id)
         .order("pick_number", { ascending: true }),
       supabase.from("players").select("*").order("name", { ascending: true }),
+      // Byes come from a separate table keyed by WEEK, so they have to be
+      // fetched alongside and joined in — casting a raw players row to
+      // StagePlayer would leave on_bye undefined, which reads as "not on bye"
+      // and would quietly let a commissioner draft a benched player.
+      currentStage.season_type !== null && currentStage.week_num !== null
+        ? supabase
+            .from("nfl_team_byes")
+            .select("nfl_team_id")
+            .eq("season", currentStage.season)
+            .eq("week_num", currentStage.week_num)
+        : Promise.resolve({ data: [], error: null }),
     ]);
     if (!orderRes.error && orderRes.data) setDraftOrder(orderRes.data as DraftOrderRow[]);
     if (!picksRes.error && picksRes.data) setPicks(picksRes.data as RosterPick[]);
-    if (!playersRes.error && playersRes.data) setPlayers(playersRes.data as Player[]);
+    if (!playersRes.error && playersRes.data) {
+      const byeTeamIds = new Set(
+        (byesRes.error ? [] : (byesRes.data ?? [])).map(
+          (r) => (r as { nfl_team_id: string }).nfl_team_id,
+        ),
+      );
+      setPlayers(decorateWithByes(playersRes.data as Player[], byeTeamIds));
+    }
     setLoading(false);
-  }, [currentStage.id]);
+  }, [currentStage.id, currentStage.season, currentStage.season_type, currentStage.week_num]);
 
   useEffect(() => {
     loadDraftState();

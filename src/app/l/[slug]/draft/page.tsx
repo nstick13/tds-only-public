@@ -1,6 +1,8 @@
 import { PixelPanel } from "@/components/ui/PixelPanel";
 import { requireLeague } from "@/lib/league/context";
 import {
+  decorateWithByes,
+  getByeTeamIds,
   getCurrentStage,
   getDraftOrder,
   getPlayers,
@@ -37,7 +39,12 @@ export default async function DraftPage({ params }: { params: { slug: string } }
 
   if (stage.status !== "draft_open") {
     const players = picks.length > 0 ? await getPlayers() : [];
-    const playersById = new Map(players.map((p) => [p.id, p]));
+    // Bye is a property of (team, this stage's week), so it is attached here
+    // rather than read off the player row — see NflTeamBye in src/lib/types.ts.
+    const byeTeamIds = await getByeTeamIds(stage);
+    const playersById = new Map(
+      decorateWithByes(players, byeTeamIds).map((p) => [p.id, p]),
+    );
 
     return (
       <div className="flex flex-col gap-4">
@@ -62,10 +69,12 @@ export default async function DraftPage({ params }: { params: { slug: string } }
     );
   }
 
-  const [draftOrder, players] = await Promise.all([
+  const [draftOrder, players, byeTeamIds] = await Promise.all([
     getDraftOrder(stage.id),
     getPlayers(),
+    getByeTeamIds(stage),
   ]);
+  const stagePlayers = decorateWithByes(players, byeTeamIds);
 
   return (
     <div className="flex flex-col gap-4">
@@ -78,7 +87,7 @@ export default async function DraftPage({ params }: { params: { slug: string } }
         initialDraftOrder={draftOrder}
         initialPicks={picks}
         managers={members}
-        allPlayers={players}
+        allPlayers={stagePlayers}
         currentUserId={membership.user_id}
         isCommissioner={membership.is_commissioner}
       />

@@ -1,5 +1,7 @@
 "use server";
 
+import { getByeTeamIds, decorateWithByes } from "@/lib/db/players";
+
 import { revalidatePath } from "next/cache";
 import { notifyOnTheClock } from "@/lib/push/notify";
 import { createClient } from "@/lib/supabase/server";
@@ -141,8 +143,15 @@ export async function draftPlayer(
     return { ok: false, error: "Slot position must match the player's position." };
   }
 
-  const blockedReason = reasonPlayerBlocked(typedPlayer);
-  if (!isPlayerDraftable(typedPlayer) && blockedReason) {
+  // Re-derive the bye here rather than trusting anything the client sent: the
+  // browser's copy came from a page render that may be minutes stale, and a
+  // bye is what makes a player undraftable. Scoped to THIS stage's week — a
+  // player on bye in week 6 is perfectly draftable in week 7.
+  const byeTeamIds = await getByeTeamIds(stage);
+  const stagePlayer = decorateWithByes([typedPlayer], byeTeamIds)[0];
+
+  const blockedReason = reasonPlayerBlocked(stagePlayer);
+  if (!isPlayerDraftable(stagePlayer) && blockedReason) {
     return { ok: false, error: blockedReason };
   }
 

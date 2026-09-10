@@ -568,6 +568,48 @@ begin
 end;
 $$;
 
+-- ----------------------------------------------------------------------------
+-- delete_league_when_last_member_leaves()
+--
+-- A league with no members is unreachable: every policy on it requires
+-- membership, so nobody can see it, nobody can administer it, and nobody can
+-- delete it — but its row still holds its slug, which is UNIQUE, so that name
+-- is burned for good. This trigger reaps it.
+--
+-- Normal play cannot reach zero members: leave_league() refuses to strand a
+-- league without a commissioner, and the commissioner DELETE policy on
+-- league_members forbids removing yourself. The reachable path is ACCOUNT
+-- DELETION — a user row goes away, profiles cascades, league_members cascades,
+-- and if that person was the last member the league is orphaned. That is
+-- exactly when this fires.
+--
+-- No recursion risk: deleting the league cascades back into league_members,
+-- but by then there are no rows left there to fire this again.
+-- ----------------------------------------------------------------------------
+create or replace function public.delete_league_when_last_member_leaves()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  delete from public.leagues l
+   where l.id = old.league_id
+     and not exists (
+       select 1 from public.league_members m where m.league_id = l.id
+     );
+  return null;
+end;
+$$;
+
+comment on function public.delete_league_when_last_member_leaves is
+  'Reaps a league once its last member is gone — otherwise it is invisible, unadministrable and squatting on a unique slug forever.';
+
+drop trigger if exists league_members_reap_empty_league on public.league_members;
+create trigger league_members_reap_empty_league
+  after delete on public.league_members
+  for each row execute function public.delete_league_when_last_member_leaves();
+
 -- ============================================================================
 -- SECTION 5 — commissioner roster repair
 -- ============================================================================

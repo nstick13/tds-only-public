@@ -38,18 +38,31 @@ result rather than an error — which is a confusing way to discover the bug.
 `league_members` is the **authorization root**. There is no global
 `is_commissioner` anywhere; the question is always "…of *which* league".
 
-### 3. Global NFL data — `players`, `nfl_games`, `nfl_week_stats`, `sync_log`
+### 3. Global NFL data — `players`, `nfl_games`, `nfl_team_byes`, `nfl_week_stats`, `sync_log`
 
 Shared by every league on the instance. Who plays for which team, when a game
 kicks off, and how many touchdowns someone scored in Week 5 are facts about
 the NFL, not about a league.
 
-**`nfl_week_stats` is keyed by `(season, season_type, week_num, player_id)`,
-not by stage.** This is the most important schema difference from the
+Two things live here that a single-league app would have put on a row it
+already had, and both moved for the same reason: **on a multi-league instance,
+"the current week" is plural.** League A can be drafting Week 6 while league B
+is locked on Week 5.
+
+- **`nfl_week_stats` is keyed by `(season, season_type, week_num, player_id)`,
+  not by stage.** This is the most important schema difference from the
 single-league app, and it is what makes the instance scale: one sync run
 serves every league, and adding the fiftieth league costs zero extra Tank01
 calls. A league's `stages` row carries those same three addressing columns, so
 standings join **stage → (season, season_type, week_num) → nfl_week_stats**.
+
+- **`nfl_team_byes` replaced a `players.on_bye` boolean.** One global flag can
+  only describe one week, so whichever week it held it was wrong for some other
+  league — and that is not cosmetic, because a player marked on bye cannot be
+  drafted at all. `on_bye` is therefore not a column: it is attached per stage
+  by `decorateWithByes()` (`src/lib/byes.ts`, pure so client components can use
+  it), producing a `StagePlayer`. Anything that renders or validates a player
+  *for a stage* takes `StagePlayer`, not `Player` — the type is the reminder.
 
 | Table | Group | Notes |
 | --- | --- | --- |
@@ -63,6 +76,7 @@ standings join **stage → (season, season_type, week_num) → nfl_week_stats**.
 | `weekly_results` | league | Written at finalize time; not computed live. |
 | `players` | global | Tank01 `playerID` as `id`. |
 | `nfl_games` | global | Schedule + kickoff. A stage locks at its week's first kickoff. |
+| `nfl_team_byes` | global | Which weeks each team is off. Keyed by week — see below. |
 | `nfl_week_stats` | global | TDs per player per **NFL week**. `points` is generated in-DB. |
 | `sync_log` | global | Backs the "last updated X ago" line. |
 | `manual_sync_runs` | global | Instance-wide sync cooldown — the Tank01 budget is shared. |

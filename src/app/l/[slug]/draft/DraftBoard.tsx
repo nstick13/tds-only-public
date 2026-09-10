@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState, useTransition } from "react";
-import { memberName, type DraftOrderRow, type LeagueMember, type Player, type RosterPick } from "@/lib/types";
+import { memberName, type DraftOrderRow, type LeagueMember, type Player, type RosterPick, type StagePlayer } from "@/lib/types";
 import { subscribeToDraft } from "@/lib/realtime";
 import { createClient } from "@/lib/supabase/client";
 import { computeCurrentPick } from "@/components/draft/draftLogic";
@@ -18,7 +18,7 @@ export interface DraftBoardProps {
   initialDraftOrder: DraftOrderRow[];
   initialPicks: RosterPick[];
   managers: LeagueMember[];
-  allPlayers: Player[];
+  allPlayers: StagePlayer[];
   currentUserId: string | null;
   isCommissioner?: boolean;
 }
@@ -82,7 +82,7 @@ export function DraftBoard({
   }, [stageId, refreshPicks, refreshDraftOrder]);
 
   const playersById = useMemo(() => {
-    const map = new Map<string, Player>();
+    const map = new Map<string, StagePlayer>();
     for (const p of allPlayers) map.set(p.id, p);
     return map;
   }, [allPlayers]);

@@ -4,21 +4,21 @@ import { useMemo, useState } from "react";
 import { PixelPanel } from "@/components/ui/PixelPanel";
 import { PixelButton } from "@/components/ui/PixelButton";
 import { Badge, type BadgeStatus } from "@/components/ui/Badge";
-import type { Player } from "@/lib/types";
+import type { StagePlayer } from "@/lib/types";
 import { POSITIONS, ROSTER_SHAPE, type Position } from "@/lib/roster";
 import { countSlot, isPlayerDraftable, reasonPlayerBlocked } from "@/components/draft/draftLogic";
 import type { RosterPick } from "@/lib/types";
 
 export interface PlayerPoolProps {
-  players: Player[];
+  players: StagePlayer[];
   isMyTurn: boolean;
   myPicks: Pick<RosterPick, "manager_id" | "slot_position">[];
   myManagerId: string | null;
-  onDraft: (player: Player) => void;
+  onDraft: (player: StagePlayer) => void;
   draftingPlayerId: string | null;
 }
 
-function badgeStatusFor(player: Player): BadgeStatus | null {
+function badgeStatusFor(player: StagePlayer): BadgeStatus | null {
   if (player.status === "Active" || !player.status) return null;
   const normalized = player.status.toUpperCase();
   if (normalized === "OUT") return "OUT";

@@ -1,6 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { createClient as createBrowserClient } from "@/lib/supabase/client";
-import type { Player } from "@/lib/types";
+import type { Player, Stage } from "@/lib/types";
+import { isAddressable } from "@/lib/types";
 import type { Position } from "@/lib/roster";
 
 export interface PlayerFilter {
@@ -82,3 +83,55 @@ export async function getPlayerPoolClient(stageId: string): Promise<Player[]> {
   if (error) throw new Error(`getPlayerPoolClient: ${error.message}`);
   return data as Player[];
 }
+
+// ----------------------------------------------------------------------------
+// Bye weeks
+//
+// A bye is a fact about (team, week), not about a player, so it cannot live on
+// the players row — see the NflTeamBye comment in src/lib/types.ts for why the
+// single-league app's `players.on_bye` boolean had to go. Anything rendering a
+// player pool FOR A STAGE decorates it here, with that stage's own week.
+// ----------------------------------------------------------------------------
+
+/**
+ * `nfl_team_id`s that are off in this stage's week.
+ *
+ * Returns an empty set for a stage with no confirmed week addressing (the four
+ * postseason rounds — see docs/ARCHITECTURE.md). Empty is the right answer
+ * there in both senses: we do not know the week, and nobody is on bye in the
+ * playoffs anyway.
+ */
+export async function getByeTeamIds(stage: Stage): Promise<Set<string>> {
+  if (!isAddressable(stage)) return new Set();
+
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("nfl_team_byes")
+    .select("nfl_team_id")
+    .eq("season", stage.season)
+    .eq("week_num", stage.week_num);
+
+  if (error) throw new Error(`getByeTeamIds: ${error.message}`);
+  return new Set((data ?? []).map((r) => r.nfl_team_id as string));
+}
+
+/** Client-component variant of getByeTeamIds. */
+export async function getByeTeamIdsClient(stage: Stage): Promise<Set<string>> {
+  if (!isAddressable(stage)) return new Set();
+
+  const supabase = createBrowserClient();
+  const { data, error } = await supabase
+    .from("nfl_team_byes")
+    .select("nfl_team_id")
+    .eq("season", stage.season)
+    .eq("week_num", stage.week_num);
+
+  if (error) throw new Error(`getByeTeamIdsClient: ${error.message}`);
+  return new Set((data ?? []).map((r) => r.nfl_team_id as string));
+}
+
+// decorateWithByes lives in src/lib/byes.ts because it is pure and client
+// components need it; this module imports the server Supabase client and so
+// cannot be bundled for the browser. Re-exported for server callers that pull
+// everything from "@/lib/db".
+export { decorateWithByes } from "@/lib/byes";
