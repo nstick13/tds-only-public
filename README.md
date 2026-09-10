@@ -39,8 +39,8 @@ Nothing below this line is needed to play. It is for running your own copy.
 ## Running your own instance
 
 You need three accounts, all of which have a usable free tier except Tank01:
-**Supabase** (database + auth), **Vercel** (hosting + cron), and
-**RapidAPI** for the Tank01 NFL stats feed.
+**Supabase** (database, auth, and the cron that drives the sync jobs),
+**Vercel** (hosting), and **RapidAPI** for the Tank01 NFL stats feed.
 
 ### 1. Supabase
 
@@ -56,6 +56,10 @@ Create a project, then open the **SQL Editor** and run the files in
 0006_rls.sql
 0007_realtime.sql
 ```
+
+Then, once the app is deployed and you know its URL, run
+`0008_cron.sql` — it schedules the sync jobs and needs two lines edited
+first. See [`docs/SCHEDULING.md`](docs/SCHEDULING.md).
 
 Order matters — each depends on the ones before it, and `0006` in particular
 calls authorization helpers defined in `0005`. Every file is safe to re-run.
@@ -87,8 +91,8 @@ Supabase only honours redirect targets on this list.
 ### 3. Tank01 (stats)
 
 Subscribe to **Tank01 NFL Live In-Game Real Time Statistics** on RapidAPI and
-copy your key. The cron cadences in `vercel.json` are sized against the Pro
-plan's 1,000 calls/day.
+copy your key. The sync cadences are sized against the Pro plan's
+1,000 calls/day.
 
 One key serves the entire instance. Stats are fetched **per NFL week, not per
 league**, so the fiftieth league costs exactly as many API calls as the first.
@@ -112,10 +116,11 @@ the full annotated list) for **every** environment you deploy:
 `NEXT_PUBLIC_*` values are compiled into the build, so **editing them in
 Vercel does nothing until you redeploy.**
 
-> **Cron needs a Pro plan.** Hobby allows two cron jobs firing once a day,
-> which is not enough to lock rosters at kickoff or follow a live slate. On
-> Hobby the app works but scores and locks only update when a commissioner
-> presses "sync now". See the header of `src/app/api/cron/_lib/cron.ts`.
+> **Scheduling is separate.** Vercel Cron needs a Pro plan (Hobby rejects any
+> schedule running more than once a day, and fails the deployment). This repo
+> schedules the sync jobs from Postgres instead — run
+> `supabase/migrations/0008_cron.sql` once your app is deployed. See
+> [`docs/SCHEDULING.md`](docs/SCHEDULING.md).
 
 ### 5. Web Push (optional)
 
