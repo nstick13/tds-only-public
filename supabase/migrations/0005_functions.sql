@@ -9,10 +9,24 @@
 -- ============================================================================
 -- SECTION 1 — authorization helpers
 --
--- Both are `security definer` so an RLS policy can ask "is this user a member
--- of league X" without the user needing a SELECT policy on league_members
--- that would itself have to consult league_members. Without this you get
--- infinite policy recursion; with it, the check runs once as the definer.
+-- All three are `security definer` so an RLS policy can ask "is this user a
+-- member of league X" without the user needing a SELECT policy on
+-- league_members that would itself have to consult league_members. Without
+-- this you get infinite policy recursion; with it, the check runs once as the
+-- definer.
+--
+-- WHY THEY REFUSE TO ANSWER ABOUT ANYONE BUT THE CALLER
+-- ----------------------------------------------------------------------------
+-- Policy expressions run as the querying role, so `authenticated` must hold
+-- EXECUTE on these — which also exposes them at /rest/v1/rpc/<name>. Taking
+-- `uid` as a parameter then means any signed-in user could ask "is user X in
+-- league Y" about someone else. Not a dangerous leak on its own (both ids are
+-- unguessable uuids you'd have to already know), but it is free to close.
+--
+-- The guard is: when there IS a caller identity, only answer about that
+-- caller. Every policy passes auth.uid(), so policies are unaffected. The
+-- service role and SECURITY DEFINER callers have no auth.uid() at all, and
+-- must keep working — hence the null check rather than a bare equality.
 -- ============================================================================
 
 create or replace function public.is_league_member(uid uuid, lid uuid)
@@ -22,10 +36,14 @@ security definer
 set search_path = public
 stable
 as $$
-  select exists (
-    select 1 from public.league_members
-     where user_id = uid and league_id = lid
-  );
+  select case
+    -- See "WHY THEY REFUSE TO ANSWER ABOUT ANYONE BUT THE CALLER" above.
+    when auth.uid() is not null and uid is distinct from auth.uid() then false
+    else exists (
+      select 1 from public.league_members
+       where user_id = uid and league_id = lid
+    )
+  end;
 $$;
 
 comment on function public.is_league_member is
@@ -38,10 +56,14 @@ security definer
 set search_path = public
 stable
 as $$
-  select exists (
-    select 1 from public.league_members
-     where user_id = uid and league_id = lid and is_commissioner
-  );
+  select case
+    -- See "WHY THEY REFUSE TO ANSWER ABOUT ANYONE BUT THE CALLER" above.
+    when auth.uid() is not null and uid is distinct from auth.uid() then false
+    else exists (
+      select 1 from public.league_members
+       where user_id = uid and league_id = lid and is_commissioner
+    )
+  end;
 $$;
 
 comment on function public.is_league_commissioner is
@@ -56,10 +78,13 @@ security definer
 set search_path = public
 stable
 as $$
-  select exists (
-    select 1 from public.league_members
-     where user_id = uid and is_commissioner
-  );
+  select case
+    when auth.uid() is not null and uid is distinct from auth.uid() then false
+    else exists (
+      select 1 from public.league_members
+       where user_id = uid and is_commissioner
+    )
+  end;
 $$;
 
 comment on function public.is_any_league_commissioner is
